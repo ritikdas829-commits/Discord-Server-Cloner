@@ -1,4 +1,26 @@
-let currentLang = process.env.LANGUAGE?.toLowerCase() === 'en' ? 'en' : 'tr';
+/**
+ * Automatically detects system language:
+ * 1. .env / environment variables (LANGUAGE, LANG)
+ * 2. Operating System locale (Intl.DateTimeFormat().resolvedOptions().locale)
+ * If the system is Turkish (tr-TR), defaults to 'tr'. If English or international, defaults to 'en'.
+ */
+function detectDefaultLanguage() {
+  const envLang = (process.env.LANGUAGE || process.env.LANG || '').toLowerCase().trim();
+  if (envLang.startsWith('en')) return 'en';
+  if (envLang.startsWith('tr')) return 'tr';
+
+  try {
+    const sysLocale = Intl.DateTimeFormat().resolvedOptions().locale.toLowerCase();
+    if (sysLocale.startsWith('tr')) {
+      return 'tr';
+    }
+    return 'en'; // English for en-* and international users
+  } catch {
+    return 'tr';
+  }
+}
+
+let currentLang = detectDefaultLanguage();
 
 export function setLanguage(lang) {
   if (['tr', 'en'].includes(lang.toLowerCase())) {
