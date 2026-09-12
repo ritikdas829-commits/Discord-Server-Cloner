@@ -16,6 +16,11 @@
   <b>Mimari:</b> Adaptive Rate-Limit & Smart ID Perm Mapper
 </p>
 
+<p align="center">
+  <a href="README.md">🇹🇷 Türkçe Dokümantasyon</a> &bull;
+  <a href="README.en.md">🇬🇧 English Documentation</a>
+</p>
+
 </div>
 
 ---

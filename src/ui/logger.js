@@ -3,6 +3,8 @@ import boxen from 'boxen';
 import cliProgress from 'cli-progress';
 import { viqoleGradient } from './banner.js';
 
+import { t, getLanguage } from '../i18n/index.js';
+
 function timestamp() {
   const now = new Date();
   return chalk.gray(`[${now.toTimeString().split(' ')[0]}]`);
@@ -22,7 +24,8 @@ export const logger = {
     console.log(`${timestamp()} ${chalk.redBright.bold('[-]')} ${chalk.red(msg)}`);
   },
   step: (stepNum, totalSteps, title) => {
-    console.log(`\n${timestamp()} ${chalk.magentaBright.bold(`[Aşama ${stepNum}/${totalSteps}]`)} ${chalk.bold.cyanBright(title)}`);
+    const stepLabel = getLanguage() === 'en' ? `[Stage ${stepNum}/${totalSteps}]` : `[Aşama ${stepNum}/${totalSteps}]`;
+    console.log(`\n${timestamp()} ${chalk.magentaBright.bold(stepLabel)} ${chalk.bold.cyanBright(title)}`);
     console.log(chalk.gray('─'.repeat(55)));
   },
   divider: () => {
@@ -38,18 +41,18 @@ export const logger = {
     const successRate = totalOps > 0 ? Math.round((totalOps / (totalOps + failed)) * 100) : 100;
 
     const statsContent = 
-      `${viqoleGradient.multiline('       ★ VIQOLE CLONER İSTATİSTİK RAPORU ★')}\n\n` +
-      `${chalk.cyan('👑 Oluşturulan Roller:')}       ${chalk.bold.green(stats.rolesCreated || 0)}\n` +
-      `${chalk.cyan('📁 Oluşturulan Kategoriler:')}  ${chalk.bold.green(stats.categoriesCreated || 0)}\n` +
-      `${chalk.cyan('💬 Oluşturulan Kanallar:')}     ${chalk.bold.green(stats.channelsCreated || 0)}\n` +
-      `${chalk.cyan('😀 Kopyalanan Emojiler:')}      ${chalk.bold.green(stats.emojisCreated || 0)}\n` +
-      `${chalk.cyan('📨 Aktarılan Mesajlar:')}       ${chalk.bold.green(stats.messagesCloned || 0)}\n` +
+      `${viqoleGradient.multiline(t('statsReportTitle'))}\n\n` +
+      `${chalk.cyan(t('statsRoles'))}       ${chalk.bold.green(stats.rolesCreated || 0)}\n` +
+      `${chalk.cyan(t('statsCategories'))}  ${chalk.bold.green(stats.categoriesCreated || 0)}\n` +
+      `${chalk.cyan(t('statsChannels'))}     ${chalk.bold.green(stats.channelsCreated || 0)}\n` +
+      `${chalk.cyan(t('statsEmojis'))}      ${chalk.bold.green(stats.emojisCreated || 0)}\n` +
+      `${chalk.cyan(t('statsMessages'))}       ${chalk.bold.green(stats.messagesCloned || 0)}\n` +
       `${chalk.gray('─'.repeat(42))}\n` +
-      `${chalk.yellow('⚠️  Başarısız İşlemler:')}      ${failed > 0 ? chalk.bold.red(failed) : chalk.bold.gray('0')}\n` +
-      `${chalk.magenta('📈 Başarı Oranı:')}             ${successRate >= 90 ? chalk.bold.greenBright(`${successRate}%`) : chalk.bold.yellow(`${successRate}%`)}\n` +
-      `${chalk.magenta('⏱️  Toplam Geçen Süre:')}       ${chalk.bold.white(stats.elapsedTime || '0s')}\n` +
+      `${chalk.yellow(t('statsFailed'))}      ${failed > 0 ? chalk.bold.red(failed) : chalk.bold.gray('0')}\n` +
+      `${chalk.magenta(t('statsSuccessRate'))}             ${successRate >= 90 ? chalk.bold.greenBright(`${successRate}%`) : chalk.bold.yellow(`${successRate}%`)}\n` +
+      `${chalk.magenta(t('statsElapsedTime'))}       ${chalk.bold.white(stats.elapsedTime || '0s')}\n` +
       `${chalk.gray('─'.repeat(42))}\n` +
-      `${chalk.italic.gray('Yapan: viqole | Teşekkürler!')}`;
+      `${chalk.italic.gray(t('statsFooter'))}`;
 
     console.log('\n' + boxen(statsContent, {
       padding: 1,

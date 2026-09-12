@@ -4,6 +4,7 @@ import { cloneRoles } from '../handlers/roles.js';
 import { cloneChannels } from '../handlers/channels.js';
 import { cloneEmojis } from '../handlers/emojis.js';
 import { cloneChannelMessages } from '../handlers/messages.js';
+import { t } from '../i18n/index.js';
 
 /**
  * Main Direct Server-to-Server Cloner Orchestrator.
@@ -62,31 +63,31 @@ export async function startDirectClone(client, sourceGuildId, targetGuildId, opt
 
   // Aşama 1: Temizlik
   if (options.clearTarget !== false) {
-    logger.step(1, totalSteps, 'Hedef Sunucu Temizliği');
+    logger.step(1, totalSteps, t('stepCleaning'));
     await clearTargetGuild(targetGuild, stats);
   }
 
   // Aşama 2: Sunucu Ayarları ve Görseller
-  logger.step(2, totalSteps, 'Sunucu Temel Bilgileri & Medya (İkon/Afiş)');
+  logger.step(2, totalSteps, t('stepSettings'));
   await cloneGuildSettings(sourceGuild, targetGuild, options);
 
   // Aşama 3: Roller ve Hiyerarşi
-  logger.step(3, totalSteps, 'Roller ve İzin Hiyerarşisi');
+  logger.step(3, totalSteps, t('stepRoles'));
   const roleMap = await cloneRoles(sourceGuild, targetGuild, stats);
 
   // Aşama 4: Kategoriler ve Kanallar
-  logger.step(4, totalSteps, 'Kategoriler, Metin ve Ses Kanalları');
+  logger.step(4, totalSteps, t('stepChannels'));
   const channelMap = await cloneChannels(sourceGuild, targetGuild, roleMap, stats);
 
   // Aşama 5: Emojiler
   if (options.cloneEmojis !== false) {
-    logger.step(5, totalSteps, 'Özel Sunucu Emojileri');
+    logger.step(5, totalSteps, t('stepEmojis'));
     await cloneEmojis(sourceGuild, targetGuild, stats);
   }
 
   // Aşama 6: Mesajlar (Opsiyonel)
   if (options.cloneMessages) {
-    logger.step(6, totalSteps, 'Kanal Mesajları (Webhook)');
+    logger.step(6, totalSteps, t('stepMessages'));
     await cloneChannelMessages(sourceGuild, channelMap, options.maxMessagesPerChannel || 10, stats);
   }
 

@@ -2,33 +2,39 @@ import { select, input, confirm, number, search, Separator } from '@inquirer/pro
 import chalk from 'chalk';
 import fs from 'fs/promises';
 import path from 'path';
+import { t } from '../i18n/index.js';
 
 /**
  * Main Interactive Menu
  */
 export async function promptMainMenu() {
   return await select({
-    message: 'Lütfen gerçekleştirmek istediğiniz işlemi seçin:',
+    message: t('menuTitle'),
     choices: [
       {
-        name: '⚡ Canlı Klonlama (Doğrudan Sunucudan Sunucuya Aktar)',
+        name: t('menuDirectClone'),
         value: 'DIRECT_CLONE',
-        description: 'Kaynak sunucudaki tüm rolleri, kanalları ve emojileri hedef sunucuya aktarır.'
+        description: t('menuDirectCloneDesc')
       },
       {
-        name: '💾 Şablon Oluştur (Sunucuyu JSON Dosyasına Yedekle)',
+        name: t('menuCreateBackup'),
         value: 'CREATE_BACKUP',
-        description: 'Sunucu yapısını gelecekte kullanmak üzere taşınabilir bir JSON şablonu olarak kaydeder.'
+        description: t('menuCreateBackupDesc')
       },
       {
-        name: '📦 Şablondan Kur (JSON Dosyasını Sunucuya Geri Yükle)',
+        name: t('menuRestoreBackup'),
         value: 'RESTORE_BACKUP',
-        description: 'Daha önce kaydedilmiş bir JSON şablonunu hedef sunucuya uygular.'
+        description: t('menuRestoreBackupDesc')
       },
       {
-        name: '❌ Çıkış',
+        name: t('menuChangeLang'),
+        value: 'CHANGE_LANG',
+        description: t('menuChangeLangDesc')
+      },
+      {
+        name: t('menuExit'),
         value: 'EXIT',
-        description: 'Programı sonlandır.'
+        description: t('menuExitDesc')
       }
     ]
   });
@@ -50,7 +56,7 @@ function hasAdminPermissions(guild, client) {
  * @param {string} promptMessage - Prompt title
  * @param {boolean} isTarget - If true, sorts Administrator guilds to the top
  */
-export async function promptSelectGuild(client, promptMessage = 'Sunucu seçin:', isTarget = false) {
+export async function promptSelectGuild(client, promptMessage = t('selectGuildTitle'), isTarget = false) {
   const allGuilds = Array.from(client.guilds.cache.values());
 
   let sortedGuilds = [];
@@ -74,13 +80,13 @@ export async function promptSelectGuild(client, promptMessage = 'Sunucu seçin:'
 
     if (isTarget) {
       if (isAdmin) {
-        displayName = `${chalk.green.bold('👑 [YÖNETİCİ]')} ${chalk.white.bold(g.name)} ${chalk.gray(`(${g.id})`)} ${chalk.cyan(`[Üye: ${g.memberCount}]`)}`;
+        displayName = `${chalk.green.bold(t('adminBadge'))} ${chalk.white.bold(g.name)} ${chalk.gray(`(${g.id})`)} ${chalk.cyan(`[${t('memberCount')}: ${g.memberCount}]`)}`;
       } else {
-        displayName = `${chalk.gray('⚪')} ${chalk.gray(g.name)} ${chalk.gray(`(${g.id})`)} ${chalk.yellow('[Yönetici Değilsiniz]')}`;
+        displayName = `${chalk.gray('⚪')} ${chalk.gray(g.name)} ${chalk.gray(`(${g.id})`)} ${chalk.yellow(t('notAdminBadge'))}`;
       }
     } else {
       const badge = isAdmin ? chalk.green('👑') : chalk.white('🌐');
-      displayName = `${badge} ${chalk.white(g.name)} ${chalk.gray(`(${g.id})`)} ${chalk.cyan(`[Üye: ${g.memberCount}]`)}`;
+      displayName = `${badge} ${chalk.white(g.name)} ${chalk.gray(`(${g.id})`)} ${chalk.cyan(`[${t('memberCount')}: ${g.memberCount}]`)}`;
     }
 
     rawChoices.push({
@@ -93,9 +99,9 @@ export async function promptSelectGuild(client, promptMessage = 'Sunucu seçin:'
 
   // Add Manual ID option
   const manualOption = {
-    name: `${chalk.cyan.bold('📝')} ${chalk.bold.yellow('Elle Sunucu ID Gir...')}`,
+    name: `${chalk.cyan.bold('📝')} ${chalk.bold.yellow(t('manualInputOption'))}`,
     value: 'MANUAL',
-    plainName: 'Elle Sunucu ID Gir Manuel ID'
+    plainName: 'Manual ID'
   };
   rawChoices.push(manualOption);
 
@@ -117,11 +123,11 @@ export async function promptSelectGuild(client, promptMessage = 'Sunucu seçin:'
     if (isTarget) {
       const result = [];
       if (adminGuilds.length > 0) {
-        result.push(new Separator(chalk.green.bold('─── 👑 YÖNETİCİ OLDUĞUNUZ HEDEF SUNUCULAR ───')));
+        result.push(new Separator(chalk.green.bold(t('headerAdminGuilds'))));
         result.push(...rawChoices.filter((c) => c.isAdmin));
       }
       if (otherGuilds.length > 0) {
-        result.push(new Separator(chalk.yellow('─── ⚠️ DİĞER SUNUCULAR (Yönetici Değilsiniz) ───')));
+        result.push(new Separator(chalk.yellow(t('headerOtherGuilds'))));
         result.push(...rawChoices.filter((c) => c.isAdmin === false));
       }
       result.push(new Separator(chalk.gray('─────────────────────────────────────────────')));
@@ -133,15 +139,15 @@ export async function promptSelectGuild(client, promptMessage = 'Sunucu seçin:'
   };
 
   const selected = await search({
-    message: `${promptMessage} ${chalk.gray('(Yazarak arayabilirsiniz)')}`,
+    message: `${promptMessage} ${chalk.gray(t('searchInstruction'))}`,
     source: searchSource,
     pageSize: 12
   });
 
   if (selected === 'MANUAL') {
     return await input({
-      message: 'Sunucu ID giriniz:',
-      validate: (val) => (/^\d{17,20}$/.test(val.trim()) ? true : 'Geçerli bir Discord Snowflake ID girin!')
+      message: t('manualInputPrompt'),
+      validate: (val) => (/^\d{17,20}$/.test(val.trim()) ? true : t('invalidId'))
     });
   }
 
@@ -153,29 +159,29 @@ export async function promptSelectGuild(client, promptMessage = 'Sunucu seçin:'
  */
 export async function promptCloneOptions() {
   const clearTarget = await confirm({
-    message: 'Hedef sunucudaki mevcut kanallar ve roller temizlensin mi?',
+    message: t('optClearTarget'),
     default: true
   });
 
   const cloneEmojis = await confirm({
-    message: 'Özel emojiler kopyalansın mı?',
+    message: t('optCloneEmojis'),
     default: true
   });
 
   const cloneMedia = await confirm({
-    message: 'Sunucu simgesi (ikonu) ve afişi (banner) kopyalansın mı?',
+    message: t('optCloneMedia'),
     default: true
   });
 
   const cloneMessages = await confirm({
-    message: 'Kanal mesajları Webhook ile kopyalansın mı? (İşlem süresini uzatır)',
+    message: t('optCloneMessages'),
     default: false
   });
 
   let maxMessagesPerChannel = 10;
   if (cloneMessages) {
     maxMessagesPerChannel = await number({
-      message: 'Kanal başına kopyalanacak mesaj sayısı:',
+      message: t('optMaxMessages'),
       default: 10,
       min: 1,
       max: 50
@@ -211,7 +217,7 @@ export async function promptSelectBackupFile() {
     }));
 
     return await select({
-      message: 'Geri yüklenecek şablon dosyasını seçin:',
+      message: t('selectBackupFile'),
       choices
     });
   } catch {

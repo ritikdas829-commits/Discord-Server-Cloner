@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import { logger } from '../ui/logger.js';
 import { clearTargetGuild } from '../handlers/guild.js';
 import { sleep, executeWithRetry, DELAY_CONFIG } from './rateLimiter.js';
+import { t } from '../i18n/index.js';
 
 /**
  * Restores a guild from a JSON backup template file.
@@ -29,12 +30,12 @@ export async function restoreBackup(backupFilePath, targetGuild, options = {}) {
 
   // Aşama 1: Temizlik
   if (options.clearBeforeRestore !== false) {
-    logger.step(1, 5, 'Hedef Sunucu Temizliği');
+    logger.step(1, 5, t('stepCleaning'));
     await clearTargetGuild(targetGuild, stats);
   }
 
   // Aşama 2: Sunucu Genel Ayarları ve Görselleri
-  logger.step(2, 5, 'Sunucu Temel Ayarları & Görseller');
+  logger.step(2, 5, t('stepSettings'));
   try {
     if (backup.guild?.name) {
       await targetGuild.setName(backup.guild.name);
@@ -61,7 +62,7 @@ export async function restoreBackup(backupFilePath, targetGuild, options = {}) {
   }
 
   // Aşama 3: Rolleri Geri Yükleme ve İzin Eşleme
-  logger.step(3, 5, 'Roller ve İzin Hiyerarşisi');
+  logger.step(3, 5, t('stepRoles'));
   const roleMap = new Map(); // originalId -> newRoleId
 
   // Everyone role
@@ -109,7 +110,7 @@ export async function restoreBackup(backupFilePath, targetGuild, options = {}) {
   }
 
   // Aşama 4: Kategoriler ve Kanallar
-  logger.step(4, 5, 'Kategoriler ve Kanallar');
+  logger.step(4, 5, t('stepChannels'));
   const categoryMap = new Map(); // originalId -> newCategoryId
 
   // Categories
@@ -197,7 +198,7 @@ export async function restoreBackup(backupFilePath, targetGuild, options = {}) {
 
   // Aşama 5: Emojiler
   if (options.restoreEmojis !== false && (backup.emojis || []).length > 0) {
-    logger.step(5, 5, 'Özel Emojiler');
+    logger.step(5, 5, t('stepEmojis'));
     for (const emoji of backup.emojis) {
       if (targetGuild.emojis.cache.some((e) => e.name === emoji.name)) continue;
       try {

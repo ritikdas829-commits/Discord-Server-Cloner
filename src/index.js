@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Client } from 'discord.js-selfbot-v13';
-import { input, confirm } from '@inquirer/prompts';
+import { input } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { showBanner, viqoleGradient } from './ui/banner.js';
 import { logger } from './ui/logger.js';
@@ -13,6 +13,7 @@ import {
 import { startDirectClone } from './core/cloner.js';
 import { createBackup } from './core/backup.js';
 import { restoreBackup } from './core/restore.js';
+import { t, setLanguage, getLanguage } from './i18n/index.js';
 
 /**
  * Sanitizes input token by trimming and removing wrapping quotes or backticks
@@ -28,12 +29,12 @@ async function main() {
   let token = sanitizeToken(process.env.DISCORD_TOKEN);
 
   if (!token) {
-    logger.warn('.env dosyasında DISCORD_TOKEN bulunamadı.');
+    logger.warn(t('tokenMissingEnv'));
     token = await input({
-      message: 'Lütfen Discord Tokeninizi girin (User Token veya Bot Token):',
+      message: t('tokenPrompt'),
       validate: (val) => {
         const clean = sanitizeToken(val);
-        return clean.length > 20 ? true : 'Geçerli bir token giriniz!';
+        return clean.length > 20 ? true : t('tokenInvalid');
       }
     });
     token = sanitizeToken(token);
@@ -43,17 +44,17 @@ async function main() {
     checkUpdate: false
   });
 
-  logger.info('Discord sunucularına bağlanılıyor...');
+  logger.info(t('connectingDiscord'));
 
   try {
     await client.login(token);
   } catch (error) {
-    logger.error(`Giriş başarısız! Token geçersiz veya Discord erişimi engellendi: ${error.message}`);
+    logger.error(`${t('loginFailed')} ${error.message}`);
     process.exit(1);
   }
 
-  logger.success(`Başarıyla giriş yapıldı: ${chalk.bold.cyan(client.user.tag)} (${client.user.id})`);
-  logger.info(`Hesabın bulunduğu toplam sunucu sayısı: ${client.guilds.cache.size}`);
+  logger.success(`${t('loginSuccess')} ${chalk.bold.cyan(client.user.tag)} (${client.user.id})`);
+  logger.info(`${t('totalGuilds')} ${client.guilds.cache.size}`);
 
   let running = true;
   while (running) {
@@ -62,11 +63,11 @@ async function main() {
 
     switch (action) {
       case 'DIRECT_CLONE': {
-        const sourceGuildId = await promptSelectGuild(client, 'Kaynak Sunucuyu Seçin (Kopyalanacak Sunucu):', false);
-        const targetGuildId = await promptSelectGuild(client, 'Hedef Sunucuyu Seçin (Klonun Yapılacağı Sunucu):', true);
+        const sourceGuildId = await promptSelectGuild(client, t('selectSourceGuild'), false);
+        const targetGuildId = await promptSelectGuild(client, t('selectTargetGuild'), true);
 
         if (sourceGuildId === targetGuildId) {
-          logger.error('Kaynak ve hedef sunucu aynı olamaz!');
+          logger.error(t('sameGuildError'));
           break;
         }
 
@@ -80,10 +81,10 @@ async function main() {
       }
 
       case 'CREATE_BACKUP': {
-        const sourceGuildId = await promptSelectGuild(client, 'Şablonu çıkarılacak sunucuyu seçin:', false);
+        const sourceGuildId = await promptSelectGuild(client, t('selectBackupSource'), false);
         const sourceGuild = client.guilds.cache.get(sourceGuildId);
         if (!sourceGuild) {
-          logger.error('Sunucu bulunamadı!');
+          logger.error(t('sourceNotFound'));
           break;
         }
 
@@ -98,14 +99,14 @@ async function main() {
       case 'RESTORE_BACKUP': {
         const backupFile = await promptSelectBackupFile();
         if (!backupFile) {
-          logger.warn('backups/ klasöründe herhangi bir .json şablon dosyası bulunamadı!');
+          logger.warn(t('noBackupsFound'));
           break;
         }
 
-        const targetGuildId = await promptSelectGuild(client, 'Şablonun kurulacağı hedef sunucuyu seçin:', true);
+        const targetGuildId = await promptSelectGuild(client, t('selectRestoreTarget'), true);
         const targetGuild = client.guilds.cache.get(targetGuildId);
         if (!targetGuild) {
-          logger.error('Hedef sunucu bulunamadı!');
+          logger.error(t('targetNotFound'));
           break;
         }
 
@@ -117,9 +118,18 @@ async function main() {
         break;
       }
 
+      case 'CHANGE_LANG': {
+        const current = getLanguage();
+        const next = current === 'tr' ? 'en' : 'tr';
+        setLanguage(next);
+        showBanner();
+        logger.success(next === 'en' ? 'Language switched to: English (US)' : 'Dil değiştirildi: Türkçe');
+        break;
+      }
+
       case 'EXIT': {
         running = false;
-        logger.info('Viqole Cloner kapatılıyor. İyi günler dileriz!');
+        logger.info(t('exitMessage'));
         client.destroy();
         process.exit(0);
       }

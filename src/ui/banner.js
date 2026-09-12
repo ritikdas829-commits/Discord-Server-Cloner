@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import gradient from 'gradient-string';
 import boxen from 'boxen';
+import { t } from '../i18n/index.js';
 
 // Custom Viqole Neon Gradient (Cyan -> Violet -> Purple -> Magenta)
 export const viqoleGradient = gradient([
@@ -35,13 +36,13 @@ export function showBanner() {
   console.log(viqoleGradient(ascii));
 
   const infoBox = boxen(
-    `${chalk.bold.white('⚡ NEXT-GEN DISCORD SERVER CLONER')}  ${chalk.cyan('[v1.0.0]')}\n` +
-    `${chalk.gray('━'.repeat(48))}\n` +
-    `${chalk.magenta('👑 Developer:')} ${chalk.bold.yellow('viqole')}\n` +
-    `${chalk.magenta('🛡️  Engine:')}    ${chalk.greenBright('Adaptive Rate-Limit & ID Perm Mapper')}\n` +
-    `${chalk.magenta('🌐 Modes:')}     ${chalk.cyan('Live Server-to-Server / JSON Template Backup & Restore')}\n` +
-    `${chalk.gray('━'.repeat(48))}\n` +
-    `${chalk.yellowBright('⚠️  Dikkat:')}  Hedef sunucuda ${chalk.bold.white('Yönetici (Administrator)')} yetkiniz olmalıdır!`,
+    `${chalk.bold.white(t('bannerTitle'))}  ${chalk.cyan('[v1.0.0]')}\n` +
+    `${chalk.gray('━'.repeat(52))}\n` +
+    `${chalk.magenta(t('bannerDeveloper'))} ${chalk.bold.yellow('viqole')}\n` +
+    `${chalk.magenta(t('bannerEngine'))}    ${chalk.greenBright(t('bannerEngineDesc'))}\n` +
+    `${chalk.magenta(t('bannerModes'))}     ${chalk.cyan(t('bannerModesDesc'))}\n` +
+    `${chalk.gray('━'.repeat(52))}\n` +
+    `${chalk.yellowBright(t('bannerWarning'))}  ${chalk.bold.white(t('bannerWarningDesc'))}`,
     {
       padding: 1,
       margin: { top: 0, bottom: 1 },
