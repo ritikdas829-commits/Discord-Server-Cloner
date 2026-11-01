@@ -6,13 +6,6 @@ import { cloneEmojis } from '../handlers/emojis.js';
 import { cloneChannelMessages } from '../handlers/messages.js';
 import { t } from '../i18n/index.js';
 
-/**
- * Main Direct Server-to-Server Cloner Orchestrator.
- * @param {Client} client - Discord client
- * @param {string} sourceGuildId - Source Discord server ID
- * @param {string} targetGuildId - Target Discord server ID
- * @param {Object} options - Cloning configuration options
- */
 export async function startDirectClone(client, sourceGuildId, targetGuildId, options = {}) {
   const startTime = Date.now();
   const stats = {
@@ -27,65 +20,66 @@ export async function startDirectClone(client, sourceGuildId, targetGuildId, opt
 
   const totalSteps = options.cloneMessages ? 6 : 5;
 
-  // 1. Fetch guilds and fresh data
-  const sourceGuild = client.guilds.cache.get(sourceGuildId);
-  const targetGuild = client.guilds.cache.get(targetGuildId);
+  // FIXED: cache.get ki jagah fetch use kar rahe hai
+  let sourceGuild = await client.guilds.fetch(sourceGuildId).catch(() => client.guilds.cache.get(sourceGuildId));
+  let targetGuild = await client.guilds.fetch(targetGuildId).catch(() => client.guilds.cache.get(targetGuildId));
 
   if (!sourceGuild) {
-    throw new Error(`Kaynak sunucu bulunamadı (${sourceGuildId}). Hesabınızın bu sunucuda olduğundan emin olun!`);
+    throw new Error(`Kaynak sunucu bulunamadı (${sourceGuildId}). Bot us server me nahi hai!`);
   }
-
   if (!targetGuild) {
-    throw new Error(`Hedef sunucu bulunamadı (${targetGuildId}). Hesabınızın bu sunucuda olduğundan emin olun!`);
+    throw new Error(`Hedef sunucu bulunamadı (${targetGuildId}). Bot us server me nahi hai!`);
   }
 
   logger.info(`Sunucu verileri Discord API'den tazeleniyor...`);
   try {
     await Promise.all([
-      sourceGuild.channels.fetch(),
       sourceGuild.roles.fetch(),
-      targetGuild.channels.fetch(),
+      sourceGuild.channels.fetch(),
+      sourceGuild.emojis.fetch().catch(()=>{}),
       targetGuild.roles.fetch(),
-      targetGuild.members.fetch(client.user.id)
+      targetGuild.channels.fetch(),
+      targetGuild.members.fetch(client.user.id).catch(()=>{})
     ]);
   } catch (err) {
     logger.warn(`Veriler tazelenirken uyarı: ${err.message}`);
   }
 
-  logger.info(`Kaynak Sunucu: "${sourceGuild.name}" (${sourceGuild.id}) [${sourceGuild.roles.cache.size} Rol, ${sourceGuild.channels.cache.size} Kanal]`);
-  logger.info(`Hedef Sunucu:  "${targetGuild.name}" (${targetGuild.id}) [${targetGuild.roles.cache.size} Rol, ${targetGuild.channels.cache.size} Kanal]`);
+  logger.info(`Kaynak: "${sourceGuild.name}" (${sourceGuild.id}) [${sourceGuild.roles.cache.size} Rol, ${sourceGuild.channels.cache.size} Kanal, ${sourceGuild.emojis.cache.size} Emoji]`);
+  logger.info(`Hedef:  "${targetGuild.name}" (${targetGuild.id})`);
 
-  // 2. Validate permissions
+  // Validate permissions
   const targetMember = targetGuild.members.me || targetGuild.members.cache.get(client.user.id);
-  if (targetMember && !targetMember.permissions.has('ADMINISTRATOR') && !targetMember.permissions.has('MANAGE_GUILD')) {
-    logger.warn('Hedef sunucuda Yönetici (Administrator) yetkiniz olmayabilir. Bazı işlemler başarısız olabilir!');
+  if (targetMember && !targetMember.permissions.has('ADMINISTRATOR')) {
+    logger.warn('Hedef sunucuda Administrator nahi hai, kuch fail ho sakta hai!');
   }
 
-  // Aşama 1: Temizlik
+  // Stage 1: Cleaning - FIXED: Apne command wale channel ko delete mat karo
   if (options.clearTarget !== false) {
     logger.step(1, totalSteps, t('stepCleaning'));
-    await clearTargetGuild(targetGuild, stats);
+    // agar !clone wala channel target me hai to usko skip karo taaki ChannelNotCached error na aaye
+    await clearTargetGuild(targetGuild, stats, options.protectedChannelId);
   }
 
-  // Aşama 2: Sunucu Ayarları ve Görseller
+  // Stage 2: Settings
   logger.step(2, totalSteps, t('stepSettings'));
   await cloneGuildSettings(sourceGuild, targetGuild, options);
 
-  // Aşama 3: Roller ve Hiyerarşi
+  // Stage 3: Roles
   logger.step(3, totalSteps, t('stepRoles'));
   const roleMap = await cloneRoles(sourceGuild, targetGuild, stats);
 
-  // Aşama 4: Kategoriler ve Kanallar
+  // Stage 4: Channels
   logger.step(4, totalSteps, t('stepChannels'));
   const channelMap = await cloneChannels(sourceGuild, targetGuild, roleMap, stats);
 
-  // Aşama 5: Emojiler
+  // Stage 5: Emojis
   if (options.cloneEmojis !== false) {
     logger.step(5, totalSteps, t('stepEmojis'));
     await cloneEmojis(sourceGuild, targetGuild, stats);
   }
 
-  // Aşama 6: Mesajlar (Opsiyonel)
+  // Stage 6: Messages
   if (options.cloneMessages) {
     logger.step(6, totalSteps, t('stepMessages'));
     await cloneChannelMessages(sourceGuild, channelMap, options.maxMessagesPerChannel || 10, stats);
