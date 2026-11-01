@@ -1,93 +1,167 @@
+/**
+ * cloner.js — Fully Self-Contained & Fixed Direct Server Cloner
+ * Location: src/core/cloner.js
+ */
+
 import { logger } from '../ui/logger.js';
-import { clearTargetGuild, cloneGuildSettings } from '../handlers/guild.js';
-import { cloneRoles } from '../handlers/roles.js';
-import { cloneChannels } from '../handlers/channels.js';
-import { cloneEmojis } from '../handlers/emojis.js';
-import { cloneChannelMessages } from '../handlers/messages.js';
-import { t } from '../i18n/index.js';
+import { ChannelType } from 'discord.js';
+
+function sleep(ms) { 
+  return new Promise(r => setTimeout(r, ms)); 
+}
 
 export async function startDirectClone(client, sourceGuildId, targetGuildId, options = {}) {
   const startTime = Date.now();
-  const stats = {
-    rolesCreated: 0,
-    categoriesCreated: 0,
-    channelsCreated: 0,
-    emojisCreated: 0,
-    messagesCloned: 0,
-    failed: 0,
-    elapsedTime: '0s'
+  const stats = { 
+    rolesCreated: 0, 
+    categoriesCreated: 0, 
+    channelsCreated: 0, 
+    emojisCreated: 0, 
+    failed: 0, 
+    elapsedTime: '0s' 
   };
 
-  const totalSteps = options.cloneMessages ? 6 : 5;
-
-  // FIXED: cache.get ki jagah fetch use kar rahe hai
+  // FIXED: cache ki jagah fetch use kiya gaya hai taaki Render par empty na mile
   let sourceGuild = await client.guilds.fetch(sourceGuildId).catch(() => client.guilds.cache.get(sourceGuildId));
   let targetGuild = await client.guilds.fetch(targetGuildId).catch(() => client.guilds.cache.get(targetGuildId));
 
-  if (!sourceGuild) {
-    throw new Error(`Kaynak sunucu bulunamadı (${sourceGuildId}). Bot us server me nahi hai!`);
-  }
-  if (!targetGuild) {
-    throw new Error(`Hedef sunucu bulunamadı (${targetGuildId}). Bot us server me nahi hai!`);
-  }
+  if (!sourceGuild) throw new Error(`Source guild ${sourceGuildId} nahi mila - Bot us server me hai?`);
+  if (!targetGuild) throw new Error(`Target guild ${targetGuildId} nahi mila - Bot us server me hai?`);
 
-  logger.info(`Sunucu verileri Discord API'den tazeleniyor...`);
+  logger.info(`Veriler tazeleniyor...`);
   try {
     await Promise.all([
       sourceGuild.roles.fetch(),
       sourceGuild.channels.fetch(),
-      sourceGuild.emojis.fetch().catch(()=>{}),
+      sourceGuild.emojis.fetch().catch(() => {}),
       targetGuild.roles.fetch(),
       targetGuild.channels.fetch(),
-      targetGuild.members.fetch(client.user.id).catch(()=>{})
     ]);
-  } catch (err) {
-    logger.warn(`Veriler tazelenirken uyarı: ${err.message}`);
+  } catch (e) { 
+    logger.warn(`Fetch warn: ${e.message}`); 
   }
 
-  logger.info(`Kaynak: "${sourceGuild.name}" (${sourceGuild.id}) [${sourceGuild.roles.cache.size} Rol, ${sourceGuild.channels.cache.size} Kanal, ${sourceGuild.emojis.cache.size} Emoji]`);
-  logger.info(`Hedef:  "${targetGuild.name}" (${targetGuild.id})`);
+  logger.info(`Kaynak: "${sourceGuild.name}" [${sourceGuild.roles.cache.size} Rol, ${sourceGuild.channels.cache.size} Kanal, ${sourceGuild.emojis.cache.size} Emoji]`);
+  logger.info(`Hedef: "${targetGuild.name}" [${targetGuild.roles.cache.size} Rol, ${targetGuild.channels.cache.size} Kanal]`);
 
-  // Validate permissions
-  const targetMember = targetGuild.members.me || targetGuild.members.cache.get(client.user.id);
-  if (targetMember && !targetMember.permissions.has('ADMINISTRATOR')) {
-    logger.warn('Hedef sunucuda Administrator nahi hai, kuch fail ho sakta hai!');
-  }
-
-  // Stage 1: Cleaning - FIXED: Apne command wale channel ko delete mat karo
+  // Stage 1: Cleaning - Command wale protected channel ko skip karo
+  const protectedId = options.protectedChannelId;
   if (options.clearTarget !== false) {
-    logger.step(1, totalSteps, t('stepCleaning'));
-    // agar !clone wala channel target me hai to usko skip karo taaki ChannelNotCached error na aaye
-    await clearTargetGuild(targetGuild, stats, options.protectedChannelId);
+    const toDelete = targetGuild.channels.cache.filter(c => c.id !== protectedId && c.deletable);
+    logger.info(`Cleaning ${toDelete.size} channels... (protected: ${protectedId || 'none'})`);
+    for (const [, ch] of toDelete) {
+      try { 
+        await ch.delete().catch(() => {}); 
+        await sleep(600); 
+      } catch {}
+    }
   }
 
-  // Stage 2: Settings
-  logger.step(2, totalSteps, t('stepSettings'));
-  await cloneGuildSettings(sourceGuild, targetGuild, options);
+  // Stage 2: Settings (Name & Icon)
+  try {
+    if (sourceGuild.iconURL()) {
+      await targetGuild.setIcon(sourceGuild.iconURL({ size: 1024 })).catch(() => {});
+    }
+    if (sourceGuild.name !== targetGuild.name) {
+      await targetGuild.setName(sourceGuild.name).catch(() => {});
+    }
+    logger.info(`Server info cloned: ${sourceGuild.name}`);
+  } catch {}
 
   // Stage 3: Roles
-  logger.step(3, totalSteps, t('stepRoles'));
-  const roleMap = await cloneRoles(sourceGuild, targetGuild, stats);
-
-  // Stage 4: Channels
-  logger.step(4, totalSteps, t('stepChannels'));
-  const channelMap = await cloneChannels(sourceGuild, targetGuild, roleMap, stats);
-
-  // Stage 5: Emojis
-  if (options.cloneEmojis !== false) {
-    logger.step(5, totalSteps, t('stepEmojis'));
-    await cloneEmojis(sourceGuild, targetGuild, stats);
+  const roles = sourceGuild.roles.cache
+    .filter(r => !r.managed && r.name !== '@everyone')
+    .sort((a, b) => b.position - a.position);
+    
+  logger.info(`Cloning ${roles.size} roles...`);
+  const roleMap = new Map();
+  for (const role of [...roles.values()].reverse()) {
+    try {
+      const newRole = await targetGuild.roles.create({
+        name: role.name,
+        color: role.color,
+        hoist: role.hoist,
+        permissions: role.permissions,
+        mentionable: role.mentionable,
+      });
+      roleMap.set(role.id, newRole.id);
+      stats.rolesCreated++;
+      await sleep(700);
+    } catch (e) { 
+      logger.warn(`Role fail ${role.name}: ${e.message}`); 
+      stats.failed++; 
+    }
   }
 
-  // Stage 6: Messages
-  if (options.cloneMessages) {
-    logger.step(6, totalSteps, t('stepMessages'));
-    await cloneChannelMessages(sourceGuild, channelMap, options.maxMessagesPerChannel || 10, stats);
+  // Stage 4: Categories
+  const categories = sourceGuild.channels.cache
+    .filter(c => c.type === ChannelType.GuildCategory)
+    .sort((a, b) => a.position - b.position);
+    
+  logger.info(`Cloning ${categories.size} categories...`);
+  const catMap = new Map();
+  for (const [, cat] of categories) {
+    try {
+      const newCat = await targetGuild.channels.create({ 
+        name: cat.name, 
+        type: ChannelType.GuildCategory 
+      });
+      catMap.set(cat.id, newCat.id);
+      stats.categoriesCreated++;
+      await sleep(700);
+    } catch (e) { 
+      logger.warn(`Cat fail ${cat.name}: ${e.message}`); 
+      stats.failed++; 
+    }
   }
 
-  const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
-  stats.elapsedTime = `${elapsedSeconds}s`;
+  // Stage 5: Channels
+  const channels = sourceGuild.channels.cache
+    .filter(c => [ChannelType.GuildText, ChannelType.GuildVoice, ChannelType.GuildAnnouncement].includes(c.type))
+    .sort((a, b) => a.position - b.position);
+    
+  logger.info(`Cloning ${channels.size} channels...`);
+  for (const [, ch] of channels) {
+    try {
+      const parent = ch.parentId ? catMap.get(ch.parentId) : null;
+      await targetGuild.channels.create({
+        name: ch.name,
+        type: ch.type,
+        parent: parent || undefined,
+        topic: ch.topic || undefined,
+        nsfw: ch.nsfw || undefined,
+      });
+      stats.channelsCreated++;
+      await sleep(1000);
+    } catch (e) { 
+      logger.warn(`Channel fail ${ch.name}: ${e.message}`); 
+      stats.failed++; 
+    }
+  }
 
-  logger.stats(stats);
+  // Stage 6: Emojis
+  const emojis = sourceGuild.emojis.cache;
+  logger.info(`Cloning ${emojis.size} emojis...`);
+  for (const [, emoji] of emojis) {
+    if (targetGuild.emojis.cache.size >= 50) break;
+    if (targetGuild.emojis.cache.some(e => e.name === emoji.name)) continue;
+    try {
+      await targetGuild.emojis.create({ 
+        attachment: emoji.url, 
+        name: emoji.name 
+      });
+      stats.emojisCreated++;
+      await sleep(1200);
+    } catch (e) { 
+      logger.warn(`Emoji fail ${emoji.name}: ${e.message}`); 
+      stats.failed++; 
+    }
+  }
+
+  const elapsed = Math.round((Date.now() - startTime) / 1000);
+  stats.elapsedTime = `${elapsed}s`;
+  
+  logger.info(`✅ DONE - Roles: ${stats.rolesCreated}, Cats: ${stats.categoriesCreated}, Channels: ${stats.channelsCreated}, Emojis: ${stats.emojisCreated}, Failed: ${stats.failed}, Time: ${stats.elapsedTime}`);
+  
   return stats;
 }
