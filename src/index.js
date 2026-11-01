@@ -1,8 +1,8 @@
 import 'dotenv/config';
-import { Client } from 'discord.js-selfbot-v13';
-import { input } from '@inquirer/prompts';
+import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import { input } from '@【entity-inquirer¦canonical_name=inquirer】/prompts';
 import chalk from 'chalk';
-import { showBanner, viqoleGradient } from './ui/banner.js';
+import { showBanner } from './ui/banner.js';
 import { logger } from './ui/logger.js';
 import {
   promptMainMenu,
@@ -15,9 +15,6 @@ import { createBackup } from './core/backup.js';
 import { restoreBackup } from './core/restore.js';
 import { t, setLanguage, getLanguage } from './i18n/index.js';
 
-/**
- * Sanitizes input token by trimming and removing wrapping quotes or backticks
- */
 function sanitizeToken(rawToken) {
   if (!rawToken) return '';
   return rawToken.trim().replace(/^["'`]+|["'`]+$/g, '').trim();
@@ -40,8 +37,16 @@ async function main() {
     token = sanitizeToken(token);
   }
 
+  // FIXED: Official bot client with proper intents
   const client = new Client({
-    checkUpdate: false
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.GuildEmojisAndStickers,
+      GatewayIntentBits.MessageContent
+    ],
+    partials: [Partials.GuildMember, Partials.Channel]
   });
 
   logger.info(t('connectingDiscord'));
@@ -50,6 +55,9 @@ async function main() {
     await client.login(token);
   } catch (error) {
     logger.error(`${t('loginFailed')} ${error.message}`);
+    if(error.message.includes('intents')) {
+        logger.error('Discord Developer Portal me jaake Privileged Intents ON karo: Presence, Server Members, Message Content');
+    }
     process.exit(1);
   }
 
@@ -60,17 +68,14 @@ async function main() {
   while (running) {
     console.log('');
     const action = await promptMainMenu();
-
     switch (action) {
       case 'DIRECT_CLONE': {
         const sourceGuildId = await promptSelectGuild(client, t('selectSourceGuild'), false);
         const targetGuildId = await promptSelectGuild(client, t('selectTargetGuild'), true);
-
         if (sourceGuildId === targetGuildId) {
           logger.error(t('sameGuildError'));
           break;
         }
-
         const options = await promptCloneOptions();
         try {
           await startDirectClone(client, sourceGuildId, targetGuildId, options);
@@ -79,7 +84,6 @@ async function main() {
         }
         break;
       }
-
       case 'CREATE_BACKUP': {
         const sourceGuildId = await promptSelectGuild(client, t('selectBackupSource'), false);
         const sourceGuild = client.guilds.cache.get(sourceGuildId);
@@ -87,7 +91,6 @@ async function main() {
           logger.error(t('sourceNotFound'));
           break;
         }
-
         try {
           await createBackup(sourceGuild, { backupEmojis: true });
         } catch (err) {
@@ -95,21 +98,18 @@ async function main() {
         }
         break;
       }
-
       case 'RESTORE_BACKUP': {
         const backupFile = await promptSelectBackupFile();
         if (!backupFile) {
           logger.warn(t('noBackupsFound'));
           break;
         }
-
         const targetGuildId = await promptSelectGuild(client, t('selectRestoreTarget'), true);
         const targetGuild = client.guilds.cache.get(targetGuildId);
         if (!targetGuild) {
           logger.error(t('targetNotFound'));
           break;
         }
-
         try {
           await restoreBackup(backupFile, targetGuild, { clearBeforeRestore: true, restoreEmojis: true });
         } catch (err) {
@@ -117,7 +117,6 @@ async function main() {
         }
         break;
       }
-
       case 'CHANGE_LANG': {
         const current = getLanguage();
         const next = current === 'tr' ? 'en' : 'tr';
@@ -126,7 +125,6 @@ async function main() {
         logger.success(next === 'en' ? 'Language switched to: English (US)' : 'Dil değiştirildi: Türkçe');
         break;
       }
-
       case 'EXIT': {
         running = false;
         logger.info(t('exitMessage'));
@@ -139,7 +137,7 @@ async function main() {
 
 process.on('unhandledRejection', (reason) => {
   if (reason?.code === 50013) {
-    logger.warn('Discord Yetki Hatası (Missing Permissions): Bot veya kullanıcı hesabının bu işlem için yetkisi yetersiz.');
+    logger.warn('Discord Yetki Hatası (Missing Permissions): Bot ko target server me Administrator hona chahiye.');
   } else {
     logger.warn(`İşlenmemiş Hata: ${reason?.message || reason}`);
   }
