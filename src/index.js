@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
-import { input } from '@【entity-inquirer¦canonical_name=inquirer】/prompts';
+import { input } from '@inquirer/prompts';
 import chalk from 'chalk';
 import { showBanner } from './ui/banner.js';
 import { logger } from './ui/logger.js';
@@ -24,8 +24,12 @@ async function main() {
   showBanner();
 
   let token = sanitizeToken(process.env.DISCORD_TOKEN);
-
   if (!token) {
+    // Render pe interactive prompt kaam nahi karega
+    if (process.env.RENDER || !process.stdin.isTTY) {
+      logger.error('DISCORD_TOKEN missing in Environment Variables!');
+      process.exit(1);
+    }
     logger.warn(t('tokenMissingEnv'));
     token = await input({
       message: t('tokenPrompt'),
@@ -37,7 +41,6 @@ async function main() {
     token = sanitizeToken(token);
   }
 
-  // FIXED: Official bot client with proper intents
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -55,7 +58,7 @@ async function main() {
     await client.login(token);
   } catch (error) {
     logger.error(`${t('loginFailed')} ${error.message}`);
-    if(error.message.includes('intents')) {
+    if(error.message.toLowerCase().includes('intents')) {
         logger.error('Discord Developer Portal me jaake Privileged Intents ON karo: Presence, Server Members, Message Content');
     }
     process.exit(1);
@@ -63,6 +66,35 @@ async function main() {
 
   logger.success(`${t('loginSuccess')} ${chalk.bold.cyan(client.user.tag)} (${client.user.id})`);
   logger.info(`${t('totalGuilds')} ${client.guilds.cache.size}`);
+
+  // --- RENDER AUTO-CLONE MODE ---
+  const autoSource = process.env.SOURCE_GUILD_ID;
+  const autoTarget = process.env.TARGET_GUILD_ID;
+
+  if (autoSource && autoTarget) {
+    logger.info(`Auto Clone Mode: ${autoSource} -> ${autoTarget}`);
+    if (autoSource === autoTarget) {
+      logger.error(t('sameGuildError'));
+      process.exit(1);
+    }
+    try {
+      // default options for auto clone
+      const options = { cloneRoles: true, cloneChannels: true, cloneEmojis: true };
+      await startDirectClone(client, autoSource, autoTarget, options);
+      logger.success('Auto clone completed!');
+      process.exit(0);
+    } catch (err) {
+      logger.error(`Klonlama hatası: ${err.message}`);
+      process.exit(1);
+    }
+  }
+
+  // --- LOCAL INTERACTIVE MODE ---
+  if (!process.stdin.isTTY) {
+    logger.warn('Non-interactive environment detected. Set SOURCE_GUILD_ID and TARGET_GUILD_ID to auto-clone.');
+    // keep alive to show logs
+    return;
+  }
 
   let running = true;
   while (running) {
