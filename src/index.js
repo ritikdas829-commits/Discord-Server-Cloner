@@ -15,9 +15,9 @@ const PREFIX = '!';
 
 async function main() {
   showBanner();
-  const token = sanitizeToken(process.env.【entity-DISCORD_TOKEN¦canonical_name=Discord】);
+  const token = sanitizeToken(process.env.DISCORD_TOKEN);
   if (!token) {
-    logger.error('【entity-DISCORD_TOKEN¦canonical_name=Discord】 missing!');
+    logger.error('DISCORD_TOKEN missing!');
     process.exit(1);
   }
 
@@ -77,7 +77,6 @@ async function main() {
     logger.info(`Use !help in Discord`);
   });
 
-  // Auto clone if env vars present
   client.once('ready', async () => {
     const src = process.env.SOURCE_GUILD_ID;
     const trg = process.env.TARGET_GUILD_ID;
