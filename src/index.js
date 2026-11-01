@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
-import { input } from '@inquirer/prompts';
+import { input } from '@【entity-inquirer¦canonical_name=inquirer】/prompts';
 import chalk from 'chalk';
 import { showBanner } from './ui/banner.js';
 import { logger } from './ui/logger.js';
@@ -20,12 +20,13 @@ function sanitizeToken(rawToken) {
   return rawToken.trim().replace(/^["'`]+|["'`]+$/g, '').trim();
 }
 
+const PREFIX = '!';
+
 async function main() {
   showBanner();
 
   let token = sanitizeToken(process.env.DISCORD_TOKEN);
   if (!token) {
-    // Render pe interactive prompt kaam nahi karega
     if (process.env.RENDER || !process.stdin.isTTY) {
       logger.error('DISCORD_TOKEN missing in Environment Variables!');
       process.exit(1);
@@ -52,6 +53,61 @@ async function main() {
     partials: [Partials.GuildMember, Partials.Channel]
   });
 
+  // --- BOT COMMANDS (Discord me kaam karega) ---
+  client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+    if (!message.content.startsWith(PREFIX)) return;
+
+    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+    const command = args.shift().toLowerCase();
+
+    if (command === 'help') {
+      return message.reply(
+`**Viqole Cloner - Commands**
+\`${PREFIX}help\` - Ye help
+\`${PREFIX}ping\` - Bot status
+\`${PREFIX}clone <sourceId> <targetId>\` - Clone server
+\`${PREFIX}backup [guildId]\` - Backup banao`
+      );
+    }
+
+    if (command === 'ping') {
+      return message.reply(`🏓 Pong! **${client.ws.ping}ms** | Servers: ${client.guilds.cache.size}`);
+    }
+
+    if (command === 'clone') {
+      const sourceId = args[0];
+      const targetId = args[1];
+      if (!sourceId || !targetId) return message.reply(`❌ Use: \`${PREFIX}clone <sourceId> <targetId>\``);
+      if (sourceId === targetId) return message.reply('❌ Same ID nahi ho sakta!');
+      
+      const sourceGuild = client.guilds.cache.get(sourceId);
+      const targetGuild = client.guilds.cache.get(targetId);
+      if (!sourceGuild || !targetGuild) return message.reply('❌ Bot dono server me nahi hai. Invite check karo.');
+
+      await message.reply(`🚀 Cloning: **${sourceGuild.name}** -> **${targetGuild.name}** ...`);
+      try {
+        await startDirectClone(client, sourceId, targetId, { cloneRoles: true, cloneChannels: true, cloneEmojis: true });
+        await message.reply(`✅ Clone Complete!`);
+      } catch (err) {
+        await message.reply(`❌ Fail: ${err.message}`);
+      }
+    }
+
+    if (command === 'backup') {
+      const guildId = args[0] || message.guild?.id;
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) return message.reply('❌ Guild nahi mila.');
+      await message.reply(`📦 Backup: ${guild.name} ...`);
+      try {
+        await createBackup(guild, { backupEmojis: true });
+        await message.reply(`✅ Backup Done!`);
+      } catch (err) {
+        await message.reply(`❌ Fail: ${err.message}`);
+      }
+    }
+  });
+
   logger.info(t('connectingDiscord'));
 
   try {
@@ -59,15 +115,16 @@ async function main() {
   } catch (error) {
     logger.error(`${t('loginFailed')} ${error.message}`);
     if(error.message.toLowerCase().includes('intents')) {
-        logger.error('Discord Developer Portal me jaake Privileged Intents ON karo: Presence, Server Members, Message Content');
+        logger.error('Discord Portal me 3 Intents ON karo: Presence, Server Members, Message Content');
     }
     process.exit(1);
   }
 
   logger.success(`${t('loginSuccess')} ${chalk.bold.cyan(client.user.tag)} (${client.user.id})`);
   logger.info(`${t('totalGuilds')} ${client.guilds.cache.size}`);
+  logger.info(`Commands Active: ${PREFIX}clone, ${PREFIX}backup, ${PREFIX}help, ${PREFIX}ping`);
 
-  // --- RENDER AUTO-CLONE MODE ---
+  // --- AUTO CLONE MODE (Render ke liye) ---
   const autoSource = process.env.SOURCE_GUILD_ID;
   const autoTarget = process.env.TARGET_GUILD_ID;
 
@@ -78,104 +135,76 @@ async function main() {
       process.exit(1);
     }
     try {
-      // default options for auto clone
       const options = { cloneRoles: true, cloneChannels: true, cloneEmojis: true };
       await startDirectClone(client, autoSource, autoTarget, options);
       logger.success('Auto clone completed!');
-      process.exit(0);
+      // Render pe exit mat karo, bot ko online rehne do commands ke liye
     } catch (err) {
       logger.error(`Klonlama hatası: ${err.message}`);
-      process.exit(1);
     }
   }
 
-  // --- LOCAL INTERACTIVE MODE ---
-  if (!process.stdin.isTTY) {
-    logger.warn('Non-interactive environment detected. Set SOURCE_GUILD_ID and TARGET_GUILD_ID to auto-clone.');
-    // keep alive to show logs
-    return;
-  }
-
-  let running = true;
-  while (running) {
-    console.log('');
-    const action = await promptMainMenu();
-    switch (action) {
-      case 'DIRECT_CLONE': {
-        const sourceGuildId = await promptSelectGuild(client, t('selectSourceGuild'), false);
-        const targetGuildId = await promptSelectGuild(client, t('selectTargetGuild'), true);
-        if (sourceGuildId === targetGuildId) {
-          logger.error(t('sameGuildError'));
+  // --- LOCAL MENU MODE (PC pe chalane ke liye) ---
+  if (!process.env.SOURCE_GUILD_ID && process.stdin.isTTY && !process.env.RENDER) {
+    let running = true;
+    while (running) {
+      console.log('');
+      const action = await promptMainMenu();
+      switch (action) {
+        case 'DIRECT_CLONE': {
+          const sourceGuildId = await promptSelectGuild(client, t('selectSourceGuild'), false);
+          const targetGuildId = await promptSelectGuild(client, t('selectTargetGuild'), true);
+          if (sourceGuildId === targetGuildId) { logger.error(t('sameGuildError')); break; }
+          const options = await promptCloneOptions();
+          try { await startDirectClone(client, sourceGuildId, targetGuildId, options); } catch (err) { logger.error(`Hata: ${err.message}`); }
           break;
         }
-        const options = await promptCloneOptions();
-        try {
-          await startDirectClone(client, sourceGuildId, targetGuildId, options);
-        } catch (err) {
-          logger.error(`Klonlama hatası: ${err.message}`);
-        }
-        break;
-      }
-      case 'CREATE_BACKUP': {
-        const sourceGuildId = await promptSelectGuild(client, t('selectBackupSource'), false);
-        const sourceGuild = client.guilds.cache.get(sourceGuildId);
-        if (!sourceGuild) {
-          logger.error(t('sourceNotFound'));
+        case 'CREATE_BACKUP': {
+          const sourceGuildId = await promptSelectGuild(client, t('selectBackupSource'), false);
+          const sourceGuild = client.guilds.cache.get(sourceGuildId);
+          if (!sourceGuild) { logger.error(t('sourceNotFound')); break; }
+          try { await createBackup(sourceGuild, { backupEmojis: true }); } catch (err) { logger.error(`Hata: ${err.message}`); }
           break;
         }
-        try {
-          await createBackup(sourceGuild, { backupEmojis: true });
-        } catch (err) {
-          logger.error(`Şablon oluşturulamadı: ${err.message}`);
-        }
-        break;
-      }
-      case 'RESTORE_BACKUP': {
-        const backupFile = await promptSelectBackupFile();
-        if (!backupFile) {
-          logger.warn(t('noBackupsFound'));
+        case 'RESTORE_BACKUP': {
+          const backupFile = await promptSelectBackupFile();
+          if (!backupFile) { logger.warn(t('noBackupsFound')); break; }
+          const targetGuildId = await promptSelectGuild(client, t('selectRestoreTarget'), true);
+          const targetGuild = client.guilds.cache.get(targetGuildId);
+          if (!targetGuild) { logger.error(t('targetNotFound')); break; }
+          try { await restoreBackup(backupFile, targetGuild, { clearBeforeRestore: true, restoreEmojis: true }); } catch (err) { logger.error(`Hata: ${err.message}`); }
           break;
         }
-        const targetGuildId = await promptSelectGuild(client, t('selectRestoreTarget'), true);
-        const targetGuild = client.guilds.cache.get(targetGuildId);
-        if (!targetGuild) {
-          logger.error(t('targetNotFound'));
+        case 'CHANGE_LANG': {
+          const current = getLanguage();
+          const next = current === 'tr' ? 'en' : 'tr';
+          setLanguage(next);
+          showBanner();
+          logger.success(next === 'en' ? 'Language: English' : 'Dil: Türkçe');
           break;
         }
-        try {
-          await restoreBackup(backupFile, targetGuild, { clearBeforeRestore: true, restoreEmojis: true });
-        } catch (err) {
-          logger.error(`Şablon geri yüklenemedi: ${err.message}`);
+        case 'EXIT': {
+          running = false;
+          logger.info(t('exitMessage'));
+          client.destroy();
+          process.exit(0);
         }
-        break;
-      }
-      case 'CHANGE_LANG': {
-        const current = getLanguage();
-        const next = current === 'tr' ? 'en' : 'tr';
-        setLanguage(next);
-        showBanner();
-        logger.success(next === 'en' ? 'Language switched to: English (US)' : 'Dil değiştirildi: Türkçe');
-        break;
-      }
-      case 'EXIT': {
-        running = false;
-        logger.info(t('exitMessage'));
-        client.destroy();
-        process.exit(0);
       }
     }
+  } else {
+    logger.info('Bot is now online and listening for commands. Use !help in Discord.');
   }
 }
 
 process.on('unhandledRejection', (reason) => {
   if (reason?.code === 50013) {
-    logger.warn('Discord Yetki Hatası (Missing Permissions): Bot ko target server me Administrator hona chahiye.');
+    logger.warn('Missing Permissions: Bot ko Administrator do.');
   } else {
-    logger.warn(`İşlenmemiş Hata: ${reason?.message || reason}`);
+    logger.warn(`Error: ${reason?.message || reason}`);
   }
 });
 
 main().catch((err) => {
-  logger.error(`Kritik Başlatma Hatası: ${err.message}`);
+  logger.error(`Critical Error: ${err.message}`);
   process.exit(1);
 });
