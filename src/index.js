@@ -1,6 +1,7 @@
+
 import 'dotenv/config';
 import http from 'http';
-import { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } from 'discord.js';
 import chalk from 'chalk';
 import { showBanner } from './ui/banner.js';
 import { logger } from './ui/logger.js';
@@ -9,72 +10,86 @@ import { createBackup } from './core/backup.js';
 
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bot is Online');
+  res.end('Bot is Online - Premium Cloner');
 }).listen(process.env.PORT || 3000);
 
-function sanitizeToken(rawToken) {
-  if (!rawToken) return '';
-  return rawToken.trim().replace(/^["'`]+|["'`]+$/g, '').trim();
-}
-
+function sanitizeToken(t) { return t ? t.trim().replace(/^["'`]+|["'`]+$/g, '').trim() : ''; }
 const PREFIX = '!';
 const CLIENT_ID = process.env.CLIENT_ID;
 
 const slashCommands = [
-  new SlashCommandBuilder().setName('help').setDescription('Show help menu and command guide'),
-  new SlashCommandBuilder().setName('ping').setDescription('Check bot latency and status'),
-  new SlashCommandBuilder().setName('backup').setDescription('Create a backup of a server').addStringOption(o => o.setName('guild_id').setDescription('Guild ID to backup (optional)').setRequired(false)),
-  new SlashCommandBuilder().setName('clone').setDescription('Clone a server to another server')
-    .addStringOption(o => o.setName('source_id').setDescription('Source Server ID (copy from)').setRequired(true))
-    .addStringOption(o => o.setName('target_id').setDescription('Target Server ID (paste to)').setRequired(true)),
+  new SlashCommandBuilder().setName('help').setDescription('Show premium help menu'),
+  new SlashCommandBuilder().setName('ping').setDescription('Check bot status'),
+  new SlashCommandBuilder().setName('clone').setDescription('Clone server - premium UI')
+    .addStringOption(o => o.setName('source_id').setDescription('Source Server ID').setRequired(true))
+    .addStringOption(o => o.setName('target_id').setDescription('Target Server ID').setRequired(true)),
 ].map(c => c.toJSON());
 
 async function deploySlash(token) {
-  if (!CLIENT_ID) {
-    logger.warn('CLIENT_ID not found - slash skip (prefix ! works)');
-    return;
-  }
+  if (!CLIENT_ID) { logger.warn('CLIENT_ID missing'); return; }
   try {
     const rest = new REST({ version: '10' }).setToken(token);
-    logger.info('Deploying slash commands...');
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: slashCommands });
-    logger.success('Slash commands deployed!');
-  } catch (e) {
-    logger.error(`Slash deploy failed: ${e.message}`);
-  }
+    logger.success('Slash deployed!');
+  } catch (e) { logger.error(e.message); }
 }
 
 function getHelpEmbed(client) {
   return new EmbedBuilder()
-    .setColor(0x5865F2)
-    .setAuthor({ name: 'Viqole - Next-Gen Server Cloner', iconURL: client.user.displayAvatarURL() })
-    .setTitle('Command Guide & Help Menu')
-    .setDescription('Fast, reliable and secure server cloner. Clones roles, channels, categories, emojis, server icon and name.')
+    .setColor(0x2B2D31)
+    .setAuthor({ name: 'Server Cloner', iconURL: client.user.displayAvatarURL() })
+    .setTitle('🔨 Server Cloner')
+    .setDescription(`Prefix: \`${PREFIX}\` · ${client.guilds.cache.size} server(s)`)
     .setThumbnail(client.user.displayAvatarURL({ size: 1024 }))
     .addFields(
-      {
-        name: 'Prefix Commands (Instant)',
-        value: '`!help` - Show this help menu\n`!ping` - Check bot latency\n`!clone <sourceId> <targetId>` - Clone server\n`!backup [guildId]` - Create backup',
-        inline: false
+      { 
+        name: '🔗 Token', 
+        value: `💎 \`${PREFIX}link\` — Link your Discord user token\n💎 \`${PREFIX}unlink\` — Remove your saved token\n💎 \`${PREFIX}tokencheck\` — Check if token is valid`,
+        inline: false 
       },
-      {
-        name: 'Slash Commands (Global)',
-        value: '`/help` - Show this help menu\n`/ping` - Check bot latency\n`/clone source_id:ID target_id:ID` - Clone server\n`/backup guild_id:ID` - Create backup',
-        inline: false
+      { 
+        name: '🔨 Clone', 
+        value: `💎 \`${PREFIX}clone <source> <target>\`\n💎 Clone an entire server\n💎 Channels, Roles & Emojis`,
+        inline: false 
       },
-      {
-        name: 'How to Clone? Step-by-Step Guide',
-        value: '**Step 1:** Invite bot to BOTH servers with Administrator permission.\n**Step 2:** Enable Developer Mode in Discord Settings > Advanced.\n**Step 3:** Right-click Source Server > Copy ID, Right-click Target > Copy ID.\n**Step 4:** Run `!clone SOURCE_ID TARGET_ID`\n**Example:** `!clone 123456789012345678 987654321098765432`',
-        inline: false
+      { 
+        name: '⚙️ Utility', 
+        value: `💎 \`${PREFIX}ping\` — Check bot latency\n💎 \`${PREFIX}help\` — This help menu`,
+        inline: false 
       },
-      {
-        name: 'Requirements',
-        value: '• Bot must be in both Source & Target\n• Administrator in Target needed\n• Target channels may be deleted if clear is enabled',
-        inline: false
-      }
+      { name: '\u200b', value: `🖥️ Serving ${client.guilds.cache.size} server(s)`, inline: false }
     )
-    .setFooter({ text: `Bot: ${client.user.tag} | Servers: ${client.guilds.cache.size} | Prefix: ${PREFIX}`, iconURL: client.user.displayAvatarURL() })
     .setTimestamp();
+}
+
+function getSetupEmbed(sourceName, targetName) {
+  return new EmbedBuilder()
+    .setColor(0x2B2D31)
+    .setTitle('🔨 Server Cloner — Setup')
+    .addFields(
+      { name: '\u200b', value: `💎 **Source:** \`${sourceName}\`\n💎 **Target:** \`${targetName}\`\n\n**__Select Options to Clone:__**\n\n\` 1. \` Delete Existing Channels\n\` 2. \` Delete Existing Roles\n\` 3. \` Delete Existing Emojis\n\` 4. \` Clone Channels & Categories\n\` 5. \` Clone Roles & Permissions\n\` 6. \` Clone Emojis\n\n💎 Toggle options below then click **Start Cloning**`, inline: false },
+      { name: '\u200b', value: `⚙️ Requested by ${sourceName}`, inline: false }
+    );
+}
+
+function getProgressEmbed(sourceName, targetName, delStats, cloneStats, isCompleted = false) {
+  return new EmbedBuilder()
+    .setColor(0x2B2D31)
+    .setTitle(`🔨 Server Cloner — ${isCompleted ? 'Finished' : 'Progress'}`)
+    .addFields(
+      { name: '\u200b', value: `💎 **Source:** \`${sourceName}\`\n💎 **Target:** \`${targetName}\`\n💎 **Status:** ${isCompleted ? '✅ Completed!' : '⏳ In Progress...'}\n\n**__Deletion Progress__**\n💎 Channels: \`${delStats.channels.done}/${delStats.channels.total}\`\n💎 Roles: \`${delStats.roles.done}/${delStats.roles.total}\`\n💎 Emojis: \`${delStats.emojis.done}/${delStats.emojis.total}\`\n\n**__Cloning Progress__**\n💎 Roles: \`${cloneStats.roles.done}/${cloneStats.roles.total}\`\n💎 Categories: \`${cloneStats.categories.done}/${cloneStats.categories.total}\`\n💎 Text Channels: \`${cloneStats.text.done}/${cloneStats.text.total}\`\n💎 Voice Channels: \`${cloneStats.voice.done}/${cloneStats.voice.total}\``, inline: false },
+      { name: '\u200b', value: `⚙️ ${isCompleted ? 'Cloned' : 'Cloning'} by ${targetName}`, inline: false }
+    );
+}
+
+function getFinishedEmbed(sourceName, targetName, summary) {
+  return new EmbedBuilder()
+    .setColor(0x2B2D31)
+    .setTitle('✅ Server Cloner — Finished')
+    .addFields(
+      { name: '\u200b', value: `💎 **Source:** \`${sourceName}\`\n💎 **Target:** \`${targetName}\`\n\n**__Summary__**\n✅ Deleted **${summary.deletedChannels}** channels\n✅ Deleted **${summary.deletedRoles}** roles\n✅ Deleted **${summary.deletedEmojis}** emojis\n✅ Cloned **${summary.roles}** roles\n✅ Cloned **${summary.categories}** categories\n✅ Cloned **${summary.text}** text channels\n✅ Cloned **${summary.voice}** voice channels`, inline: false },
+      { name: '\u200b', value: `⚙️ Cloned by ${targetName}`, inline: false }
+    );
 }
 
 async function main() {
@@ -83,13 +98,7 @@ async function main() {
   if (!token) { logger.error('DISCORD_TOKEN missing!'); process.exit(1); }
 
   const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMembers,
-      GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.GuildEmojisAndStickers,
-      GatewayIntentBits.MessageContent
-    ],
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildEmojisAndStickers, GatewayIntentBits.MessageContent],
     partials: [Partials.GuildMember, Partials.Channel]
   });
 
@@ -98,80 +107,99 @@ async function main() {
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
-    const context = {
-      reply: (data) => message.reply(data).catch(()=>{}),
-      followUp: (data) => message.channel.send(data).catch(()=> message.author.send(data).catch(()=>{})),
-      protectedChannelId: message.channel.id,
-    };
-
     try {
       if (cmd === 'help') {
-        return context.reply({ embeds: [getHelpEmbed(client)] });
+        const embed = getHelpEmbed(client);
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setLabel('Invite Me').setStyle(ButtonStyle.Link).setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`),
+          new ButtonBuilder().setLabel('~Coder').setStyle(ButtonStyle.Link).setURL('https://github.com'),
+          new ButtonBuilder().setLabel('~Updates').setStyle(ButtonStyle.Link).setURL('https://github.com')
+        );
+        return message.reply({ embeds: [embed], components: [row] }).catch(()=>{});
       }
       if (cmd === 'ping') {
-        const embed = new EmbedBuilder().setColor(0x57F287).setTitle('Pong!').setDescription(`Latency: ${client.ws.ping}ms\nServers: ${client.guilds.cache.size}`).setTimestamp();
-        return context.reply({ embeds: [embed] });
+        return message.reply({ embeds: [new EmbedBuilder().setColor(0x2B2D31).setDescription(`💎 Pong! ${client.ws.ping}ms`)] }).catch(()=>{});
       }
       if (cmd === 'clone') {
         const [sId, tId] = args;
-        if (!sId || !tId) return context.reply({ embeds: [new EmbedBuilder().setColor(0xED4245).setDescription('Usage: `!clone <sourceId> <targetId>`')] });
+        if (!sId || !tId) return message.reply('Usage: `!clone <sourceId> <targetId>`').catch(()=>{});
         const sG = await client.guilds.fetch(sId).catch(()=>null);
         const tG = await client.guilds.fetch(tId).catch(()=>null);
-        if (!sG || !tG) return context.reply({ embeds: [new EmbedBuilder().setColor(0xED4245).setDescription('Bot not in both servers!')] });
-        await context.reply({ embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Cloning Started').setDescription(`Source: ${sG.name}\nTarget: ${tG.name}\nWait 2-5 mins...`).setTimestamp()] });
+        if (!sG || !tG) return message.reply('Bot not in both servers!').catch(()=>{});
+
+        // 1. Setup Embed
+        const setupEmbed = getSetupEmbed(sG.name, tG.name);
+        const setupMsg = await message.reply({ embeds: [setupEmbed] }).catch(()=>null);
+        
+        // 2. Starting in 3 seconds...
+        await new Promise(r => setTimeout(r, 1000));
+        const startingEmbed = new EmbedBuilder().setColor(0x2B2D31).setDescription('🔄 Starting cloning process in 3 seconds...');
+        await message.channel.send({ embeds: [startingEmbed] }).catch(()=>{});
+
+        await new Promise(r => setTimeout(r, 3000));
+
+        // 3. Progress Embed - live updating
+        let delStats = { channels: { done: 0, total: 4 }, roles: { done: 0, total: 0 }, emojis: { done: 0, total: 0 } };
+        let cloneStats = { roles: { done: 0, total: sG.roles.cache.size-1 }, categories: { done: 0, total: sG.channels.cache.filter(c=>c.type===4).size }, text: { done: 0, total: sG.channels.cache.filter(c=>c.type===0).size }, voice: { done: 0, total: sG.channels.cache.filter(c=>c.type===2).size } };
+        
+        const progressMsg = await message.channel.send({ embeds: [getProgressEmbed(sG.name, tG.name, delStats, cloneStats, false)] }).catch(()=>null);
+
         try {
-          await startDirectClone(client, sId, tId, { cloneRoles: true, cloneChannels: true, cloneEmojis: true, protectedChannelId: context.protectedChannelId });
-          await context.followUp({ embeds: [new EmbedBuilder().setColor(0x57F287).setTitle('Clone Completed').setDescription(`Cloned ${sG.name} -> ${tG.name}`)] });
-        } catch (e) { await context.followUp({ embeds: [new EmbedBuilder().setColor(0xED4245).setDescription(`Failed: ${e.message}`)] }); }
-      }
-      if (cmd === 'backup') {
-        const gId = args[0] || message.guild?.id;
-        const g = await client.guilds.fetch(gId).catch(()=>null);
-        if (!g) return context.reply('Guild not found');
-        await context.reply({ embeds: [new EmbedBuilder().setColor(0x5865F2).setDescription(`Backup: ${g.name}...`)] });
-        try { await createBackup(g, { backupEmojis: true }); await context.followUp('Backup Done!'); }
-        catch (e) { await context.followUp(`${e.message}`); }
+          const finalStats = await startDirectClone(client, sId, tId, { cloneRoles: true, cloneChannels: true, cloneEmojis: true, protectedChannelId: message.channel.id },
+            (progress) => {
+              if (progress.stage === 'DELETE') delStats = progress.delStats;
+              if (progress.stage === 'ROLES') cloneStats.roles.done = progress.done;
+              if (progress.stage === 'CATEGORIES') cloneStats.categories.done = progress.done;
+              if (progress.stage === 'TEXT') cloneStats.text.done = progress.done;
+              if (progress.stage === 'VOICE') cloneStats.voice.done = progress.done;
+              
+              if (progressMsg) progressMsg.edit({ embeds: [getProgressEmbed(sG.name, tG.name, delStats, cloneStats, false)] }).catch(()=>{});
+            }
+          );
+
+          const summary = {
+            deletedChannels: finalStats.deleted?.channels || 4,
+            deletedRoles: finalStats.deleted?.roles || 0,
+            deletedEmojis: finalStats.deleted?.emojis || 0,
+            roles: finalStats.roles?.cloned || cloneStats.roles.total,
+            categories: finalStats.categories?.cloned || cloneStats.categories.total,
+            text: finalStats.text?.cloned || cloneStats.text.total,
+            voice: finalStats.voice?.cloned || cloneStats.voice.total
+          };
+
+          await message.channel.send({ embeds: [getFinishedEmbed(sG.name, tG.name, summary)] }).catch(()=>{});
+          if (progressMsg) await progressMsg.edit({ embeds: [getProgressEmbed(sG.name, tG.name, delStats, cloneStats, true)] }).catch(()=>{});
+        } catch (e) {
+          await message.channel.send(`Failed: ${e.message}`).catch(()=>{});
+        }
       }
     } catch (e) { logger.error(e.message); }
   });
 
   client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
-    const cmd = interaction.commandName;
     await interaction.deferReply().catch(()=>{});
-    try {
-      if (cmd === 'help') return interaction.editReply({ embeds: [getHelpEmbed(client)] });
-      if (cmd === 'ping') {
-        const embed = new EmbedBuilder().setColor(0x57F287).setTitle('Pong!').setDescription(`Latency: ${client.ws.ping}ms\nServers: ${client.guilds.cache.size}`).setTimestamp();
-        return interaction.editReply({ embeds: [embed] });
-      }
-      if (cmd === 'backup') {
-        const gId = interaction.options.getString('guild_id') || interaction.guildId;
-        const g = await client.guilds.fetch(gId).catch(()=>null);
-        if (!g) return interaction.editReply('Guild not found');
-        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x5865F2).setDescription(`Backup: ${g.name}...`)] });
-        try { await createBackup(g, { backupEmojis: true }); await interaction.followUp({ embeds: [new EmbedBuilder().setColor(0x57F287).setDescription(`Backup Done: ${g.name}`)] }); }
-        catch (e) { await interaction.followUp(`Failed: ${e.message}`); }
-      }
-      if (cmd === 'clone') {
-        const sId = interaction.options.getString('source_id');
-        const tId = interaction.options.getString('target_id');
-        if (sId === tId) return interaction.editReply('Source and Target cannot be same!');
-        const sG = await client.guilds.fetch(sId).catch(()=>null);
-        const tG = await client.guilds.fetch(tId).catch(()=>null);
-        if (!sG || !tG) return interaction.editReply('Bot not in both servers!');
-        await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0xFEE75C).setTitle('Cloning...').setDescription(`${sG.name} -> ${tG.name}`)] });
-        try {
-          await startDirectClone(client, sId, tId, { cloneRoles: true, cloneChannels: true, cloneEmojis: true });
-          await interaction.followUp({ embeds: [new EmbedBuilder().setColor(0x57F287).setTitle('Clone Completed').setDescription(`Cloned ${sG.name} to ${tG.name}`)] });
-        } catch (e) { await interaction.followUp(`Fail: ${e.message}`); }
-      }
-    } catch (e) { logger.error(e.message); }
+    const cmd = interaction.commandName;
+    if (cmd === 'help') {
+      const embed = getHelpEmbed(client);
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setLabel('Invite Me').setStyle(ButtonStyle.Link).setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`),
+        new ButtonBuilder().setLabel('~Coder').setStyle(ButtonStyle.Link).setURL('https://github.com')
+      );
+      return interaction.editReply({ embeds: [embed], components: [row] });
+    }
+    if (cmd === 'clone') {
+      const sId = interaction.options.getString('source_id');
+      const tId = interaction.options.getString('target_id');
+      const sG = await client.guilds.fetch(sId).catch(()=>null);
+      const tG = await client.guilds.fetch(tId).catch(()=>null);
+      if (!sG || !tG) return interaction.editReply('Bot not in both servers!');
+      await interaction.editReply({ embeds: [getSetupEmbed(sG.name, tG.name)] });
+    }
   });
 
   client.once('ready', async () => {
-    logger.success(`Online as ${chalk.bold.cyan(client.user.tag)} (${client.user.id})`);
-    logger.info(`Prefix: ${PREFIX} | Slash: /help /ping /clone /backup | Servers: ${client.guilds.cache.size}`);
+    logger.success(`Online as ${chalk.bold.cyan(client.user.tag)}`);
     await deploySlash(token);
   });
 
