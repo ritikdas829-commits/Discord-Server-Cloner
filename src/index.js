@@ -17,6 +17,36 @@ function sanitizeToken(t) { return t ? t.trim().replace(/^["'`]+|["'`]+$/g, '').
 const PREFIX = '!';
 const CLIENT_ID = process.env.CLIENT_ID;
 
+// ===== SERVER LOCK + YOUR INVITE LINK =====
+const ALLOWED_GUILDS = process.env.OWNER_GUILD_ID ? process.env.OWNER_GUILD_ID.split(',').map(s=>s.trim()).filter(Boolean) : [];
+const SUPPORT_INVITE = process.env.SUPPORT_SERVER_INVITE || 'https://discord.gg/vva6pd3yPA';
+
+function isAllowedGuild(guildId) {
+  if (ALLOWED_GUILDS.length === 0) return true;
+  return ALLOWED_GUILDS.includes(guildId);
+}
+
+function getNotAllowedEmbed(client) {
+  const embed = new EmbedBuilder()
+    .setColor(0xED4245)
+    .setTitle('❌ Access Denied')
+    .setDescription(`**You are not in this server!**\n\nThis bot is private and only works in the owner's server.\n\n💎 **You are not in this server**`)
+    .addFields(
+      { name: '🔗 Join Our Server', value: `[Click to Join](${SUPPORT_INVITE})\n\`${SUPPORT_INVITE}\``, inline: false },
+      { name: '📝 How to get access?', value: `Join our support server to request access.\nOnly allowed servers can use clone.`, inline: false }
+    )
+    .setThumbnail(client.user.displayAvatarURL())
+    .setTimestamp();
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel('Join Support Server').setStyle(ButtonStyle.Link).setURL(SUPPORT_INVITE),
+    new ButtonBuilder().setLabel('Invite Me').setStyle(ButtonStyle.Link).setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`)
+  );
+
+  return { embeds: [embed], components: [row] };
+}
+// ===========================================
+
 const slashCommands = [
   new SlashCommandBuilder().setName('help').setDescription('Show premium help menu'),
   new SlashCommandBuilder().setName('ping').setDescription('Check bot status'),
@@ -35,7 +65,7 @@ async function deploySlash(token) {
 }
 
 function getHelpEmbed(client) {
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(0x2B2D31)
     .setAuthor({ name: 'Server Cloner', iconURL: client.user.displayAvatarURL() })
     .setTitle('🔨 Server Cloner')
@@ -60,6 +90,19 @@ function getHelpEmbed(client) {
       { name: '\u200b', value: `🖥️ Serving ${client.guilds.cache.size} server(s)`, inline: false }
     )
     .setTimestamp();
+
+  // UPDATED BUTTONS WITH YOUR LINK
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel('Invite Me').setStyle(ButtonStyle.Link).setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`),
+    new ButtonBuilder().setLabel('~Coder').setStyle(ButtonStyle.Link).setURL(SUPPORT_INVITE),
+    new ButtonBuilder().setLabel('~Updates').setStyle(ButtonStyle.Link).setURL(SUPPORT_INVITE)
+  );
+
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel('Join Server').setStyle(ButtonStyle.Link).setURL(SUPPORT_INVITE)
+  );
+
+  return { embeds: [embed], components: [row, row2] };
 }
 
 function getSetupEmbed(sourceName, targetName) {
@@ -107,15 +150,17 @@ async function main() {
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
+    // SERVER LOCK CHECK
+    if (message.guild && !isAllowedGuild(message.guild.id)) {
+      if (['clone', 'backup'].includes(cmd)) {
+        return message.reply(getNotAllowedEmbed(client)).catch(()=>{});
+      }
+    }
+
     try {
       if (cmd === 'help') {
-        const embed = getHelpEmbed(client);
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setLabel('Invite Me').setStyle(ButtonStyle.Link).setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`),
-          new ButtonBuilder().setLabel('~Coder').setStyle(ButtonStyle.Link).setURL('https://github.com'),
-          new ButtonBuilder().setLabel('~Updates').setStyle(ButtonStyle.Link).setURL('https://github.com')
-        );
-        return message.reply({ embeds: [embed], components: [row] }).catch(()=>{});
+        const helpData = getHelpEmbed(client);
+        return message.reply(helpData).catch(()=>{});
       }
       if (cmd === 'ping') {
         return message.reply({ embeds: [new EmbedBuilder().setColor(0x2B2D31).setDescription(`💎 Pong! ${client.ws.ping}ms`)] }).catch(()=>{});
@@ -127,18 +172,13 @@ async function main() {
         const tG = await client.guilds.fetch(tId).catch(()=>null);
         if (!sG || !tG) return message.reply('Bot not in both servers!').catch(()=>{});
 
-        // 1. Setup Embed
         const setupEmbed = getSetupEmbed(sG.name, tG.name);
-        const setupMsg = await message.reply({ embeds: [setupEmbed] }).catch(()=>null);
+        await message.reply({ embeds: [setupEmbed] }).catch(()=>{});
         
-        // 2. Starting in 3 seconds...
         await new Promise(r => setTimeout(r, 1000));
-        const startingEmbed = new EmbedBuilder().setColor(0x2B2D31).setDescription('🔄 Starting cloning process in 3 seconds...');
-        await message.channel.send({ embeds: [startingEmbed] }).catch(()=>{});
-
+        await message.channel.send({ embeds: [new EmbedBuilder().setColor(0x2B2D31).setDescription('🔄 Starting cloning process in 3 seconds...')] }).catch(()=>{});
         await new Promise(r => setTimeout(r, 3000));
 
-        // 3. Progress Embed - live updating
         let delStats = { channels: { done: 0, total: 4 }, roles: { done: 0, total: 0 }, emojis: { done: 0, total: 0 } };
         let cloneStats = { roles: { done: 0, total: sG.roles.cache.size-1 }, categories: { done: 0, total: sG.channels.cache.filter(c=>c.type===4).size }, text: { done: 0, total: sG.channels.cache.filter(c=>c.type===0).size }, voice: { done: 0, total: sG.channels.cache.filter(c=>c.type===2).size } };
         
@@ -152,7 +192,6 @@ async function main() {
               if (progress.stage === 'CATEGORIES') cloneStats.categories.done = progress.done;
               if (progress.stage === 'TEXT') cloneStats.text.done = progress.done;
               if (progress.stage === 'VOICE') cloneStats.voice.done = progress.done;
-              
               if (progressMsg) progressMsg.edit({ embeds: [getProgressEmbed(sG.name, tG.name, delStats, cloneStats, false)] }).catch(()=>{});
             }
           );
@@ -178,15 +217,18 @@ async function main() {
 
   client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
+    
+    if (interaction.guildId && !isAllowedGuild(interaction.guildId)) {
+      if (['clone', 'backup'].includes(interaction.commandName)) {
+        return interaction.reply(getNotAllowedEmbed(client)).catch(()=>{});
+      }
+    }
+
     await interaction.deferReply().catch(()=>{});
     const cmd = interaction.commandName;
     if (cmd === 'help') {
-      const embed = getHelpEmbed(client);
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel('Invite Me').setStyle(ButtonStyle.Link).setURL(`https://discord.com/oauth2/authorize?client_id=${client.user.id}&permissions=8&scope=bot`),
-        new ButtonBuilder().setLabel('~Coder').setStyle(ButtonStyle.Link).setURL('https://github.com')
-      );
-      return interaction.editReply({ embeds: [embed], components: [row] });
+      const helpData = getHelpEmbed(client);
+      return interaction.editReply(helpData);
     }
     if (cmd === 'clone') {
       const sId = interaction.options.getString('source_id');
@@ -199,7 +241,7 @@ async function main() {
   });
 
   client.once('ready', async () => {
-    logger.success(`Online as ${chalk.bold.cyan(client.user.tag)}`);
+    logger.success(`Online as ${chalk.bold.cyan(client.user.tag)} | Locked Invite: ${SUPPORT_INVITE}`);
     await deploySlash(token);
   });
 
