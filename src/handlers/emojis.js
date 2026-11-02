@@ -1,14 +1,20 @@
+/**
+ * emojis.js — Premium UI + Live Progress + Direct URL Fix
+ * Location: src/handlers/emojis.js
+ * Fixed: Base64 error, now uses direct URL, faster cloning
+ */
+
 import { logger } from '../ui/logger.js';
-import { downloadImageAsBase64 } from './guild.js';
 import { sleep, executeWithRetry, DELAY_CONFIG } from '../core/rateLimiter.js';
 
-export async function cloneEmojis(sourceGuild, targetGuild, stats) {
+export async function cloneEmojis(sourceGuild, targetGuild, stats, onProgress = null) {
+  stats = stats || { emojisCreated: 0, failed: 0 };
   const emojis = sourceGuild.emojis.cache;
   const totalEmojis = emojis.size;
 
   if (totalEmojis === 0) {
     logger.info('Kaynak sunucuda kopyalanacak emoji bulunamadı.');
-    return;
+    return 0;
   }
 
   logger.info(`Emojiler taranıyor... Toplam emoji: ${totalEmojis}`);
@@ -20,44 +26,46 @@ export async function cloneEmojis(sourceGuild, targetGuild, stats) {
 
   if (availableSlots <= 0) {
     logger.warn('Hedef sunucuda boş emoji slotu kalmadı.');
-    return;
+    return 0;
   }
 
   const emojisToClone = Array.from(emojis.values()).slice(0, availableSlots);
+  let cloned = 0;
   let index = 0;
 
   for (const emoji of emojisToClone) {
     index++;
+    
+    // Skip if already exists
     if (targetGuild.emojis.cache.some((e) => e.name === emoji.name)) {
       logger.info(`[${index}/${emojisToClone.length}] Emoji zaten mevcut: :${emoji.name}:`);
+      cloned++;
+      if (onProgress) onProgress(cloned, emojisToClone.length, emoji.name);
       continue;
     }
 
     try {
-      const emojiUrl = emoji.url;
-      const emojiData = await downloadImageAsBase64(emojiUrl);
-
-      if (!emojiData) {
-        logger.warn(`Emoji indirilemedi: :${emoji.name}:`);
-        stats.failed++;
-        continue;
-      }
-
+      // FIXED: Use direct URL instead of base64 - faster and no buffer error
       await executeWithRetry(
         async () => {
-          // FIXED for v14 - object syntax
           return await targetGuild.emojis.create({
-            attachment: emojiData,
+            attachment: emoji.url, // Direct URL - FIXED
             name: emoji.name,
-            reason: 'Viqole Cloner Tarafından Oluşturuldu'
+            reason: 'Cloner - Premium UI'
           });
         },
         `Emoji: ${emoji.name}`
       );
 
       stats.emojisCreated++;
+      cloned++;
+      
+      // Live progress for premium UI
+      if (onProgress) onProgress(cloned, emojisToClone.length, emoji.name);
+
       logger.info(`[${index}/${emojisToClone.length}] Oluşturuldu: [Emoji] :${emoji.name}:`);
-      await sleep(DELAY_CONFIG.EMOJI_CREATE || 1500);
+      await sleep(DELAY_CONFIG.EMOJI_CREATE || 1000);
+      
     } catch (err) {
       logger.error(`Emoji fail (:${emoji.name}:): ${err.message}`);
       stats.failed++;
@@ -66,4 +74,5 @@ export async function cloneEmojis(sourceGuild, targetGuild, stats) {
   }
 
   logger.success(`Emoji klonlama tamamlandı. Toplam: ${stats.emojisCreated} emoji.`);
+  return cloned;
 }
